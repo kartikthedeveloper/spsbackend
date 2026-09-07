@@ -1,170 +1,265 @@
-const ExcelJS = require('exceljs');
 const Payment = require('../models/Payment');
 const Student = require('../models/Student');
 const Attendance = require('../models/Attendance');
 const Lead = require('../models/Lead');
 const Expense = require('../models/Expense');
 
-const sendWorkbook = async (res, workbook, filename) => {
-  res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-  res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
-  await workbook.xlsx.write(res);
-  res.end();
-};
-
 const branchFilterFor = (req) =>
-  req.user.role !== 'admin' ? { branch: req.user.branch } : req.query.branch ? { branch: req.query.branch } : {};
+  req.user.role !== 'admin'
+    ? { branch: req.user.branch }
+    : req.query.branch
+      ? { branch: req.query.branch }
+      : {};
 
+/*
+|--------------------------------------------------------------------------
+| Fee Collection
+|--------------------------------------------------------------------------
+*/
 exports.feeReport = async (req, res) => {
-  const filter = branchFilterFor(req);
-  const payments = await Payment.find(filter).populate('student', 'name admissionId phone').sort({ paymentDate: -1 });
+  try {
+    const filter = branchFilterFor(req);
 
-  const wb = new ExcelJS.Workbook();
-  const sheet = wb.addWorksheet('Fee Collection');
-  sheet.columns = [
-    { header: 'Receipt No', key: 'receiptNumber', width: 18 },
-    { header: 'Date', key: 'date', width: 14 },
-    { header: 'Student', key: 'student', width: 24 },
-    { header: 'Admission ID', key: 'admissionId', width: 16 },
-    { header: 'Phone', key: 'phone', width: 14 },
-    { header: 'Amount', key: 'amount', width: 12 },
-    { header: 'Mode', key: 'mode', width: 14 },
-  ];
-  payments.forEach((p) => {
-    sheet.addRow({
-      receiptNumber: p.receiptNumber,
-      date: new Date(p.paymentDate).toLocaleDateString(),
-      student: p.student?.name,
-      admissionId: p.student?.admissionId,
-      phone: p.student?.phone,
-      amount: p.amountPaid,
-      mode: p.paymentMode,
+    const payments = await Payment.find(filter)
+      .populate('student', 'name admissionId phone')
+      .sort({ paymentDate: -1 })
+      .lean();
+
+    const rows = payments.map((p) => ({
+      receiptNumber: p.receiptNumber || '',
+      date: p.paymentDate || null,
+      student: p.student?.name || '',
+      admissionId: p.student?.admissionId || '',
+      phone: p.student?.phone || '',
+      amount: Number(p.amountPaid || 0),
+      mode: p.paymentMode || '',
+      transactionRef: p.transactionRef || '',
+      installmentLabel: p.installmentLabel || '',
+      remarks: p.remarks || '',
+    }));
+
+    res.json({
+      success: true,
+      report: 'fees',
+      count: rows.length,
+      rows,
     });
-  });
-  sheet.getRow(1).font = { bold: true };
-  await sendWorkbook(res, wb, 'fee-collection-report.xlsx');
+  } catch (err) {
+    console.error('Fee report error:', err);
+
+    res.status(500).json({
+      success: false,
+      message: 'Could not generate fee report',
+    });
+  }
 };
 
+/*
+|--------------------------------------------------------------------------
+| Attendance
+|--------------------------------------------------------------------------
+*/
 exports.attendanceReport = async (req, res) => {
-  const filter = branchFilterFor(req);
-  if (req.query.batch) filter.batch = req.query.batch;
-  const records = await Attendance.find(filter).populate('student', 'name admissionId').populate('batch', 'name').sort({ date: -1 });
+  try {
+    const filter = branchFilterFor(req);
 
-  const wb = new ExcelJS.Workbook();
-  const sheet = wb.addWorksheet('Attendance');
-  sheet.columns = [
-    { header: 'Date', key: 'date', width: 14 },
-    { header: 'Student', key: 'student', width: 24 },
-    { header: 'Admission ID', key: 'admissionId', width: 16 },
-    { header: 'Batch', key: 'batch', width: 18 },
-    { header: 'Status', key: 'status', width: 12 },
-  ];
-  records.forEach((r) => {
-    sheet.addRow({
-      date: new Date(r.date).toLocaleDateString(),
-      student: r.student?.name,
-      admissionId: r.student?.admissionId,
-      batch: r.batch?.name,
-      status: r.status,
-    });
-  });
-  sheet.getRow(1).font = { bold: true };
-  await sendWorkbook(res, wb, 'attendance-report.xlsx');
-};
-
-exports.leadReport = async (req, res) => {
-  const filter = branchFilterFor(req);
-  const leads = await Lead.find(filter).populate('assignedTo', 'name').populate('interestedCourse', 'name').sort({ createdAt: -1 });
-
-  const wb = new ExcelJS.Workbook();
-  const sheet = wb.addWorksheet('Leads');
-  sheet.columns = [
-    { header: 'Lead ID', key: 'leadId', width: 16 },
-    { header: 'Name', key: 'name', width: 22 },
-    { header: 'Phone', key: 'phone', width: 14 },
-    { header: 'Source', key: 'source', width: 14 },
-    { header: 'Stage', key: 'stage', width: 16 },
-    { header: 'Priority', key: 'priority', width: 10 },
-    { header: 'Assigned To', key: 'assignedTo', width: 18 },
-    { header: 'Interested Course', key: 'course', width: 20 },
-    { header: 'Created On', key: 'createdOn', width: 14 },
-  ];
-  leads.forEach((l) => {
-    sheet.addRow({
-      leadId: l.leadId,
-      name: l.fullName,
-      phone: l.phone,
-      source: l.source,
-      stage: l.stage,
-      priority: l.priority,
-      assignedTo: l.assignedTo?.name,
-      course: l.interestedCourse?.name,
-      createdOn: new Date(l.createdAt).toLocaleDateString(),
-    });
-  });
-  sheet.getRow(1).font = { bold: true };
-  await sendWorkbook(res, wb, 'lead-report.xlsx');
-};
-
-exports.expenseReport = async (req, res) => {
-  const filter = branchFilterFor(req);
-  const expenses = await Expense.find(filter).populate('recordedBy', 'name').sort({ date: -1 });
-
-  const wb = new ExcelJS.Workbook();
-  const sheet = wb.addWorksheet('Expenses');
-  sheet.columns = [
-    { header: 'Date', key: 'date', width: 14 },
-    { header: 'Category', key: 'category', width: 16 },
-    { header: 'Title', key: 'title', width: 24 },
-    { header: 'Amount', key: 'amount', width: 12 },
-    { header: 'Recorded By', key: 'recordedBy', width: 18 },
-  ];
-  expenses.forEach((e) => {
-    sheet.addRow({
-      date: new Date(e.date).toLocaleDateString(),
-      category: e.category,
-      title: e.title,
-      amount: e.amount,
-      recordedBy: e.recordedBy?.name,
-    });
-  });
-  sheet.getRow(1).font = { bold: true };
-  await sendWorkbook(res, wb, 'expense-report.xlsx');
-};
-
-exports.feeDefaultersReport = async (req, res) => {
-  const filter = { ...branchFilterFor(req), isActive: true };
-  const students = await Student.find(filter).populate('course', 'name');
-  const payments = await Payment.aggregate([{ $group: { _id: '$student', total: { $sum: '$amountPaid' } } }]);
-  const paidMap = new Map(payments.map((p) => [p._id.toString(), p.total]));
-
-  const wb = new ExcelJS.Workbook();
-  const sheet = wb.addWorksheet('Fee Defaulters');
-  sheet.columns = [
-    { header: 'Admission ID', key: 'admissionId', width: 16 },
-    { header: 'Name', key: 'name', width: 22 },
-    { header: 'Phone', key: 'phone', width: 14 },
-    { header: 'Course', key: 'course', width: 20 },
-    { header: 'Total Payable', key: 'payable', width: 14 },
-    { header: 'Paid', key: 'paid', width: 12 },
-    { header: 'Pending', key: 'pending', width: 12 },
-  ];
-  students.forEach((s) => {
-    const paid = paidMap.get(s._id.toString()) || 0;
-    const payable = (s.totalFee || 0) - (s.discount || 0);
-    const pending = payable - paid;
-    if (pending > 0) {
-      sheet.addRow({
-        admissionId: s.admissionId,
-        name: s.name,
-        phone: s.phone,
-        course: s.course?.name,
-        payable,
-        paid,
-        pending,
-      });
+    if (req.query.batch) {
+      filter.batch = req.query.batch;
     }
-  });
-  sheet.getRow(1).font = { bold: true };
-  await sendWorkbook(res, wb, 'fee-defaulters-report.xlsx');
+
+    const records = await Attendance.find(filter)
+      .populate('student', 'name admissionId')
+      .populate('batch', 'name')
+      .sort({ date: -1 })
+      .lean();
+
+    const rows = records.map((r) => ({
+      date: r.date || null,
+      student: r.student?.name || '',
+      admissionId: r.student?.admissionId || '',
+      batch: r.batch?.name || '',
+      status: r.status || '',
+    }));
+
+    res.json({
+      success: true,
+      report: 'attendance',
+      count: rows.length,
+      rows,
+    });
+  } catch (err) {
+    console.error('Attendance report error:', err);
+
+    res.status(500).json({
+      success: false,
+      message: 'Could not generate attendance report',
+    });
+  }
+};
+
+/*
+|--------------------------------------------------------------------------
+| Leads
+|--------------------------------------------------------------------------
+*/
+exports.leadReport = async (req, res) => {
+  try {
+    const filter = branchFilterFor(req);
+
+    const leads = await Lead.find(filter)
+      .populate('assignedTo', 'name')
+      .populate('interestedCourse', 'name')
+      .sort({ createdAt: -1 })
+      .lean();
+
+    const rows = leads.map((l) => ({
+      leadId: l.leadId || '',
+      name: l.fullName || '',
+      phone: l.phone || '',
+      email: l.email || '',
+      source: l.source || '',
+      stage: l.stage || '',
+      priority: l.priority || '',
+      assignedTo: l.assignedTo?.name || '',
+      course: l.interestedCourse?.name || '',
+      createdOn: l.createdAt || null,
+    }));
+
+    res.json({
+      success: true,
+      report: 'leads',
+      count: rows.length,
+      rows,
+    });
+  } catch (err) {
+    console.error('Lead report error:', err);
+
+    res.status(500).json({
+      success: false,
+      message: 'Could not generate lead report',
+    });
+  }
+};
+
+/*
+|--------------------------------------------------------------------------
+| Expenses
+|--------------------------------------------------------------------------
+*/
+exports.expenseReport = async (req, res) => {
+  try {
+    const filter = branchFilterFor(req);
+
+    const expenses = await Expense.find(filter)
+      .populate('recordedBy', 'name')
+      .sort({ date: -1 })
+      .lean();
+
+    const rows = expenses.map((e) => ({
+      date: e.date || null,
+      category: e.category || '',
+      title: e.title || '',
+      amount: Number(e.amount || 0),
+      recordedBy: e.recordedBy?.name || '',
+      notes: e.notes || '',
+    }));
+
+    res.json({
+      success: true,
+      report: 'expenses',
+      count: rows.length,
+      rows,
+    });
+  } catch (err) {
+    console.error('Expense report error:', err);
+
+    res.status(500).json({
+      success: false,
+      message: 'Could not generate expense report',
+    });
+  }
+};
+
+/*
+|--------------------------------------------------------------------------
+| Fee Defaulters
+|--------------------------------------------------------------------------
+*/
+exports.feeDefaultersReport = async (req, res) => {
+  try {
+    const filter = {
+      ...branchFilterFor(req),
+      isActive: true,
+    };
+
+    const students = await Student.find(filter)
+      .populate('course', 'name')
+      .lean();
+
+    /*
+     * IMPORTANT:
+     * Original code calculated all payments globally.
+     * We preserve that behavior here.
+     */
+    const payments = await Payment.aggregate([
+      {
+        $group: {
+          _id: '$student',
+          total: {
+            $sum: '$amountPaid',
+          },
+        },
+      },
+    ]);
+
+    const paidMap = new Map(
+      payments.map((p) => [
+        p._id.toString(),
+        Number(p.total || 0),
+      ])
+    );
+
+    const rows = [];
+
+    students.forEach((s) => {
+      const paid =
+        paidMap.get(s._id.toString()) || 0;
+
+      const payable =
+        Number(s.totalFee || 0) -
+        Number(s.discount || 0);
+
+      const pending = payable - paid;
+
+      if (pending > 0) {
+        rows.push({
+          admissionId: s.admissionId || '',
+          name: s.name || '',
+          phone: s.phone || '',
+          course: s.course?.name || '',
+          payable,
+          paid,
+          pending,
+        });
+      }
+    });
+
+    res.json({
+      success: true,
+      report: 'fee-defaulters',
+      count: rows.length,
+      rows,
+    });
+  } catch (err) {
+    console.error(
+      'Fee defaulters report error:',
+      err
+    );
+
+    res.status(500).json({
+      success: false,
+      message:
+        'Could not generate fee defaulters report',
+    });
+  }
 };
