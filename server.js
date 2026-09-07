@@ -5,6 +5,7 @@ const morgan = require('morgan');
 const connectDB = require('./config/db');
 
 const authRoutes = require('./routes/authRoutes');
+const userRoutes = require('./routes/userRoutes');
 const branchRoutes = require('./routes/branchRoutes');
 const courseRoutes = require('./routes/courseRoutes');
 const studentRoutes = require('./routes/studentRoutes');
@@ -29,6 +30,7 @@ app.use(morgan('dev'));
 app.get('/api/health', (req, res) => res.json({ status: 'ok', time: new Date() }));
 
 app.use('/api/auth', authRoutes);
+app.use('/api/users', userRoutes);
 app.use('/api/branches', branchRoutes);
 app.use('/api/academics', courseRoutes); // /courses and /batches
 app.use('/api/students', studentRoutes);

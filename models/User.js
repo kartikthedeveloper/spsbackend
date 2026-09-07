@@ -9,7 +9,7 @@ const userSchema = new mongoose.Schema(
     password: { type: String, required: true, minlength: 6, select: false },
     role: {
       type: String,
-      enum: ['admin', 'branch_manager', 'staff', 'student'],
+      enum: ['admin', 'branch_manager', 'staff', 'trainer', 'student'],
       default: 'staff',
     },
     branch: { type: mongoose.Schema.Types.ObjectId, ref: 'Branch', default: null },
