@@ -23,7 +23,13 @@ const app = express();
 
 connectDB();
 
-app.use(cors({ origin: '*' }));
+app.use(cors({
+  origin: 'https://successpointsikar.netlify.app',
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+}));
+
+app.options('*', cors());
 app.use(express.json({ limit: '5mb' }));
 app.use(morgan('dev'));
 
