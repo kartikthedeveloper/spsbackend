@@ -23,11 +23,24 @@ const app = express();
 
 connectDB();
 
+const allowedOrigins = [
+  'http://localhost:3000',
+  'http://localhost:5173',
+  'https://successpointsikar.netlify.app'
+];
+
 app.use(cors({
-  origin: 'https://successpointsikar.netlify.app',
+  origin: allowedOrigins,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
 }));
+
+
+// app.use(cors({
+//   origin: 'https://successpointsikar.netlify.app',
+//   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+//   allowedHeaders: ['Content-Type', 'Authorization'],
+// }));
 
 app.options('*', cors());
 app.use(express.json({ limit: '5mb' }));
