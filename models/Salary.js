@@ -11,7 +11,7 @@ const salarySchema = new mongoose.Schema(
     kpiAdjustment: { type: Number, default: 0 }, // computed amount, +/-
     deductions: { type: Number, default: 0 },
     netSalary: { type: Number, required: true },
-    status: { type: String, enum: ['pending', 'paid'], default: 'pending' },
+    status: { type: String, enum: ['pending', 'paid'], default: 'paid' },
     paidOn: { type: Date },
     generatedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   },
