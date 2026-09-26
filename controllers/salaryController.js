@@ -13,15 +13,14 @@ const computeKpiAdjustment = (baseSalary, kpiScore) => {
 
 exports.generateSalary = async (req, res) => {
   try {
-    const { staff, month, year, baseSalary, kpiScore = 100, deductions = 0 } = req.body;
+    const { staff, month, year, baseSalary, deductions = 0 } = req.body;
     const branch = req.user.role === 'admin' ? req.body.branch : req.user.branch;
 
-    const kpiAdjustment = computeKpiAdjustment(baseSalary, kpiScore);
-    const netSalary = baseSalary + kpiAdjustment - deductions;
+    const netSalary = baseSalary - deductions;
 
     const salary = await Salary.findOneAndUpdate(
       { staff, month, year },
-      { branch, baseSalary, kpiScore, kpiAdjustment, deductions, netSalary, generatedBy: req.user._id },
+      { branch, baseSalary, deductions, netSalary, generatedBy: req.user._id },
       { new: true, upsert: true }
     );
     res.status(201).json({ salary });
