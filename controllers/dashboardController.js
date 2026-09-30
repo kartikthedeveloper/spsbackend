@@ -29,6 +29,7 @@ const getPeriodRange = (req) => {
     );
 
     error.status = 400;
+
     throw error;
   }
 
@@ -51,6 +52,7 @@ const getPeriodRange = (req) => {
       );
 
       error.status = 400;
+
       throw error;
     }
   } else if (req.query.year === undefined) {
@@ -119,18 +121,21 @@ const getPeriodRange = (req) => {
 // =====================================================
 
 const getBranchFilter = (req) => {
+  // Non-admin users only see their own branch
   if (req.user.role !== 'admin') {
     return {
       branch: req.user.branch,
     };
   }
 
+  // Admin can filter by selected branch
   if (req.query.branch) {
     return {
       branch: req.query.branch,
     };
   }
 
+  // Admin without branch filter = all branches
   return {};
 };
 
@@ -141,8 +146,17 @@ const getBranchFilter = (req) => {
 
 exports.summary = async (req, res) => {
   try {
+    // -------------------------------------------------
+    // Branch filter
+    // -------------------------------------------------
+
     const branchFilter =
       getBranchFilter(req);
+
+
+    // -------------------------------------------------
+    // Selected period
+    // -------------------------------------------------
 
     const {
       year,
@@ -151,6 +165,12 @@ exports.summary = async (req, res) => {
       endDate,
     } = getPeriodRange(req);
 
+
+    // -------------------------------------------------
+    // Date filter for collections / expenses /
+    // university payments
+    // -------------------------------------------------
+
     const periodDateFilter = {
       $gte: startDate,
       $lt: endDate,
@@ -158,7 +178,7 @@ exports.summary = async (req, res) => {
 
 
     // =================================================
-    // GENERAL COUNTS
+    // ALL DASHBOARD QUERIES
     // =================================================
 
     const [
@@ -166,28 +186,16 @@ exports.summary = async (req, res) => {
       activeLeads,
       upcomingBatches,
 
-      // Student collection for selected period
       periodCollection,
-
-      // Expenses for selected period
       periodExpense,
-
-      // Staff salaries paid for selected period
       periodSalaryPaid,
-
-      // University payments for selected period
       periodUniversityPaid,
 
-      // Number of student payment transactions
       periodPaymentCount,
 
-      // Current students for pending fee
       students,
-
-      // All student payments for pending fee
       paymentsForPending,
 
-      // All university payments
       allUniversityPayments,
 
     ] = await Promise.all([
@@ -199,6 +207,7 @@ exports.summary = async (req, res) => {
 
       Student.countDocuments({
         ...branchFilter,
+
         isActive: true,
       }),
 
@@ -209,6 +218,7 @@ exports.summary = async (req, res) => {
 
       Lead.countDocuments({
         ...branchFilter,
+
         stage: {
           $nin: [
             'converted',
@@ -224,6 +234,7 @@ exports.summary = async (req, res) => {
 
       Batch.countDocuments({
         ...branchFilter,
+
         status: 'upcoming',
       }),
 
@@ -236,7 +247,9 @@ exports.summary = async (req, res) => {
         {
           $match: {
             ...branchFilter,
-            paymentDate: periodDateFilter,
+
+            paymentDate:
+              periodDateFilter,
           },
         },
 
@@ -253,14 +266,16 @@ exports.summary = async (req, res) => {
 
 
       // =================================================
-      // EXPENSE
+      // NORMAL EXPENSE
       // =================================================
 
       Expense.aggregate([
         {
           $match: {
             ...branchFilter,
-            date: periodDateFilter,
+
+            date:
+              periodDateFilter,
           },
         },
 
@@ -277,25 +292,39 @@ exports.summary = async (req, res) => {
 
 
       // =================================================
-      // STAFF SALARY PAID
+      // STAFF SALARY
       // =================================================
       //
-      // IMPORTANT:
-      // Only salary with paymentStatus = paid
-      // and paymentDate inside selected period
-      // will be considered as cash outflow.
+      // Your actual MongoDB salary structure:
       //
-      // Pending salary will NOT reduce balance.
+      // month
+      // year
+      // status
+      // netSalary
+      //
+      // Example:
+      //
+      // month: 6
+      // year: 2026
+      // status: "paid"
+      // netSalary: 13000
+      //
+      // Therefore salary is calculated using:
+      //
+      // month + year + status
+      //
+      // NOT paymentDate/paymentStatus.
+      //
       // =================================================
 
       StaffSalary.aggregate([
         {
           $match: {
-            ...branchFilter,
+            month: Number(month),
 
-            paymentStatus: 'paid',
+            year: Number(year),
 
-            paymentDate: periodDateFilter,
+            status: 'paid',
           },
         },
 
@@ -304,7 +333,12 @@ exports.summary = async (req, res) => {
             _id: null,
 
             total: {
-              $sum: '$netSalary',
+              $sum: {
+                $ifNull: [
+                  '$netSalary',
+                  0,
+                ],
+              },
             },
           },
         },
@@ -320,7 +354,8 @@ exports.summary = async (req, res) => {
           $match: {
             ...branchFilter,
 
-            paymentDate: periodDateFilter,
+            paymentDate:
+              periodDateFilter,
           },
         },
 
@@ -337,18 +372,19 @@ exports.summary = async (req, res) => {
 
 
       // =================================================
-      // NUMBER OF STUDENT PAYMENT TRANSACTIONS
+      // STUDENT PAYMENT TRANSACTIONS
       // =================================================
 
       Payment.countDocuments({
         ...branchFilter,
 
-        paymentDate: periodDateFilter,
+        paymentDate:
+          periodDateFilter,
       }),
 
 
       // =================================================
-      // CURRENT STUDENTS FOR PENDING FEE
+      // CURRENT ACTIVE STUDENTS
       // =================================================
 
       Student.find({
@@ -361,12 +397,13 @@ exports.summary = async (req, res) => {
 
 
       // =================================================
-      // ALL STUDENT PAYMENTS FOR PENDING FEE
+      // ALL STUDENT PAYMENTS
       // =================================================
 
       Payment.aggregate([
         {
-          $match: branchFilter,
+          $match:
+            branchFilter,
         },
 
         {
@@ -387,7 +424,8 @@ exports.summary = async (req, res) => {
 
       UniversityPayment.aggregate([
         {
-          $match: branchFilter,
+          $match:
+            branchFilter,
         },
 
         {
@@ -409,38 +447,49 @@ exports.summary = async (req, res) => {
     // =================================================
 
     const totalCollection =
-      periodCollection[0]?.total || 0;
+      Number(
+        periodCollection[0]?.total || 0
+      );
 
 
     const totalExpense =
-      periodExpense[0]?.total || 0;
+      Number(
+        periodExpense[0]?.total || 0
+      );
 
 
     const totalSalaryPaid =
-      periodSalaryPaid[0]?.total || 0;
+      Number(
+        periodSalaryPaid[0]?.total || 0
+      );
 
 
     const totalUniversityPaid =
-      periodUniversityPaid[0]?.total || 0;
+      Number(
+        periodUniversityPaid[0]?.total || 0
+      );
 
 
     // =================================================
-    // BALANCE CALCULATION
+    // BALANCE AFTER UNIVERSITY PAYMENT
     // =================================================
 
-    // Balance after university payment only
     const balanceAfterUniversity =
       totalCollection -
       totalUniversityPaid;
 
 
-    // Final actual balance
+    // =================================================
+    // FINAL NET BALANCE
+    // =================================================
     //
     // Collection
     // - University Payment
-    // - Normal Expenses
+    // - Other Expenses
     // - Paid Staff Salary
     //
+    // =================================================
+
     const netBalance =
       totalCollection -
       totalUniversityPaid -
@@ -456,7 +505,7 @@ exports.summary = async (req, res) => {
       paymentsForPending.map(
         (payment) => [
           payment._id.toString(),
-          payment.total,
+          Number(payment.total || 0),
         ]
       )
     );
@@ -470,8 +519,12 @@ exports.summary = async (req, res) => {
             Number(
               student.netFee ??
                 (
-                  Number(student.totalFee || 0) -
-                  Number(student.discount || 0)
+                  Number(
+                    student.totalFee || 0
+                  ) -
+                  Number(
+                    student.discount || 0
+                  )
                 )
             );
 
@@ -500,17 +553,17 @@ exports.summary = async (req, res) => {
     // =================================================
 
     const totalUniversityPaidAllTime =
-      allUniversityPayments[0]?.total || 0;
+      Number(
+        allUniversityPayments[0]?.total || 0
+      );
 
 
     const totalUniversityPayable =
       students.reduce(
         (sum, student) =>
           sum +
-          (
-            Number(
-              student.universityFee
-            ) || 0
+          Number(
+            student.universityFee || 0
           ),
 
         0
@@ -540,11 +593,14 @@ exports.summary = async (req, res) => {
     // RESPONSE
     // =================================================
 
-    res.json({
+    res.status(200).json({
 
-      // -------------------------------------------------
+      success: true,
+
+
+      // =================================================
       // PERIOD
-      // -------------------------------------------------
+      // =================================================
 
       period: {
         year,
@@ -554,9 +610,9 @@ exports.summary = async (req, res) => {
       },
 
 
-      // -------------------------------------------------
+      // =================================================
       // GENERAL
-      // -------------------------------------------------
+      // =================================================
 
       totalStudents,
 
@@ -568,18 +624,18 @@ exports.summary = async (req, res) => {
         activeLeads,
 
 
-      // -------------------------------------------------
+      // =================================================
       // PENDING FEES
-      // -------------------------------------------------
+      // =================================================
 
       pendingFeesTotal,
 
       universityPendingTotal,
 
 
-      // -------------------------------------------------
+      // =================================================
       // COLLECTIONS
-      // -------------------------------------------------
+      // =================================================
 
       collections: {
 
@@ -587,9 +643,7 @@ exports.summary = async (req, res) => {
           totalCollection,
 
 
-        // Keep existing frontend fields
-        // compatible with old dashboard.
-
+        // Existing frontend compatibility
         today:
           month &&
           year ===
@@ -608,31 +662,29 @@ exports.summary = async (req, res) => {
 
 
         year:
-          month
-            ? totalCollection
-            : totalCollection,
+          totalCollection,
       },
 
 
-      // -------------------------------------------------
+      // =================================================
       // FINANCIAL SUMMARY
-      // -------------------------------------------------
+      // =================================================
 
       financial: {
 
-        // Total money collected
+        // Total student collection
         totalCollection,
 
 
-        // University payment
+        // Total university payment
         totalUniversityPaid,
 
 
-        // Other business expenses
+        // Normal business expenses
         totalExpense,
 
 
-        // Staff salary actually paid
+        // Staff salary paid
         totalSalaryPaid,
 
 
@@ -640,18 +692,18 @@ exports.summary = async (req, res) => {
         balanceAfterUniversity,
 
 
-        // Final balance after ALL paid outflows
+        // Final balance
         netBalance,
 
 
-        // Total money gone out
+        // Total money out
         totalOutflow,
       },
 
 
-      // -------------------------------------------------
-      // CONVENIENCE FIELDS FOR FRONTEND
-      // -------------------------------------------------
+      // =================================================
+      // FRONTEND CONVENIENCE FIELDS
+      // =================================================
 
       totalCollection,
 
@@ -682,9 +734,14 @@ exports.summary = async (req, res) => {
       err.status || 500
     ).json({
 
+      success: false,
+
       message:
         err.message ||
         'Error loading dashboard',
+
+      error:
+        err.message,
     });
   }
 };
@@ -698,7 +755,6 @@ exports.collectionTrend = async (
   req,
   res
 ) => {
-
   try {
 
     const branchFilter =
@@ -717,9 +773,10 @@ exports.collectionTrend = async (
       req.query.month !== '';
 
 
-    let year = hasYear
-      ? Number(req.query.year)
-      : now.getFullYear();
+    let year =
+      hasYear
+        ? Number(req.query.year)
+        : now.getFullYear();
 
 
     if (
@@ -729,6 +786,8 @@ exports.collectionTrend = async (
     ) {
 
       return res.status(400).json({
+
+        success: false,
 
         message:
           'year must be a valid number between 2000 and 2100',
@@ -742,9 +801,10 @@ exports.collectionTrend = async (
 
     if (hasMonth) {
 
-      month = Number(
-        req.query.month
-      );
+      month =
+        Number(
+          req.query.month
+        );
 
 
       if (
@@ -754,6 +814,8 @@ exports.collectionTrend = async (
       ) {
 
         return res.status(400).json({
+
+          success: false,
 
           message:
             'month must be between 1 and 12',
@@ -773,18 +835,20 @@ exports.collectionTrend = async (
 
     if (month) {
 
-      startDate = new Date(
-        year,
-        month - 1,
-        1
-      );
+      startDate =
+        new Date(
+          year,
+          month - 1,
+          1
+        );
 
 
-      endDate = new Date(
-        year,
-        month,
-        1
-      );
+      endDate =
+        new Date(
+          year,
+          month,
+          1
+        );
 
 
       const trend =
@@ -802,6 +866,7 @@ exports.collectionTrend = async (
 
                 $lt:
                   endDate,
+
               },
             },
           },
@@ -828,6 +893,7 @@ exports.collectionTrend = async (
                   $dayOfMonth:
                     '$paymentDate',
                 },
+
               },
 
 
@@ -835,8 +901,11 @@ exports.collectionTrend = async (
 
                 $sum:
                   '$amountPaid',
+
               },
+
             },
+
           },
 
 
@@ -846,12 +915,15 @@ exports.collectionTrend = async (
               '_id.day': 1,
 
             },
+
           },
 
         ]);
 
 
-      return res.json({
+      return res.status(200).json({
+
+        success: true,
 
         type: 'daily',
 
@@ -871,18 +943,20 @@ exports.collectionTrend = async (
 
     if (hasYear) {
 
-      startDate = new Date(
-        year,
-        0,
-        1
-      );
+      startDate =
+        new Date(
+          year,
+          0,
+          1
+        );
 
 
-      endDate = new Date(
-        year + 1,
-        0,
-        1
-      );
+      endDate =
+        new Date(
+          year + 1,
+          0,
+          1
+        );
 
 
       const trend =
@@ -900,6 +974,7 @@ exports.collectionTrend = async (
 
                 $lt:
                   endDate,
+
               },
             },
           },
@@ -920,6 +995,7 @@ exports.collectionTrend = async (
                   $month:
                     '$paymentDate',
                 },
+
               },
 
 
@@ -927,8 +1003,11 @@ exports.collectionTrend = async (
 
                 $sum:
                   '$amountPaid',
+
               },
+
             },
+
           },
 
 
@@ -938,12 +1017,15 @@ exports.collectionTrend = async (
               '_id.month': 1,
 
             },
+
           },
 
         ]);
 
 
-      return res.json({
+      return res.status(200).json({
+
+        success: true,
 
         type: 'monthly',
 
@@ -991,6 +1073,7 @@ exports.collectionTrend = async (
 
               $gte:
                 sixMonthsAgo,
+
             },
           },
         },
@@ -1011,6 +1094,7 @@ exports.collectionTrend = async (
                 $month:
                   '$paymentDate',
               },
+
             },
 
 
@@ -1018,8 +1102,11 @@ exports.collectionTrend = async (
 
               $sum:
                 '$amountPaid',
+
             },
+
           },
+
         },
 
 
@@ -1031,12 +1118,15 @@ exports.collectionTrend = async (
             '_id.month': 1,
 
           },
+
         },
 
       ]);
 
 
-    res.json({
+    return res.status(200).json({
+
+      success: true,
 
       type: 'monthly',
 
@@ -1053,7 +1143,9 @@ exports.collectionTrend = async (
     );
 
 
-    res.status(500).json({
+    return res.status(500).json({
+
+      success: false,
 
       message:
         'Error loading collection trend',
