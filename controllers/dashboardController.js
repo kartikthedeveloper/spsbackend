@@ -121,21 +121,18 @@ const getPeriodRange = (req) => {
 // =====================================================
 
 const getBranchFilter = (req) => {
-  // Non-admin users only see their own branch
   if (req.user.role !== 'admin') {
     return {
       branch: req.user.branch,
     };
   }
 
-  // Admin can filter by selected branch
   if (req.query.branch) {
     return {
       branch: req.query.branch,
     };
   }
 
-  // Admin without branch filter = all branches
   return {};
 };
 
@@ -146,17 +143,8 @@ const getBranchFilter = (req) => {
 
 exports.summary = async (req, res) => {
   try {
-    // -------------------------------------------------
-    // Branch filter
-    // -------------------------------------------------
-
     const branchFilter =
       getBranchFilter(req);
-
-
-    // -------------------------------------------------
-    // Selected period
-    // -------------------------------------------------
 
     const {
       year,
@@ -166,14 +154,45 @@ exports.summary = async (req, res) => {
     } = getPeriodRange(req);
 
 
-    // -------------------------------------------------
-    // Date filter for collections / expenses /
-    // university payments
-    // -------------------------------------------------
+    // =================================================
+    // PERIOD DATE FILTER
+    // =================================================
 
     const periodDateFilter = {
       $gte: startDate,
       $lt: endDate,
+    };
+
+
+    // =================================================
+    // FULL YEAR FILTER FOR SALARY
+    // =================================================
+    //
+    // IMPORTANT:
+    //
+    // Salary will ALWAYS be calculated for the
+    // COMPLETE SELECTED YEAR.
+    //
+    // Example:
+    //
+    // Dashboard = June 2026
+    //
+    // Salary =
+    // Jan + Feb + Mar + Apr + May + Jun +
+    // Jul + Aug + Sep + Oct + Nov + Dec
+    //
+    // Only records having:
+    //
+    // year: 2026
+    // status: "paid"
+    //
+    // will be included.
+    //
+    // =================================================
+
+    const salaryYearFilter = {
+      year: Number(year),
+      status: 'paid',
     };
 
 
@@ -188,7 +207,10 @@ exports.summary = async (req, res) => {
 
       periodCollection,
       periodExpense,
-      periodSalaryPaid,
+
+      // FULL YEAR PAID SALARY
+      yearlySalaryPaid,
+
       periodUniversityPaid,
 
       periodPaymentCount,
@@ -292,10 +314,10 @@ exports.summary = async (req, res) => {
 
 
       // =================================================
-      // STAFF SALARY
+      // FULL YEAR STAFF SALARY
       // =================================================
       //
-      // Your actual MongoDB salary structure:
+      // Salary structure from your MongoDB:
       //
       // month
       // year
@@ -304,28 +326,27 @@ exports.summary = async (req, res) => {
       //
       // Example:
       //
-      // month: 6
-      // year: 2026
-      // status: "paid"
-      // netSalary: 13000
+      // {
+      //   month: 6,
+      //   year: 2026,
+      //   status: "paid",
+      //   netSalary: 13000
+      // }
       //
-      // Therefore salary is calculated using:
+      // We DO NOT filter salary by selected month.
       //
-      // month + year + status
+      // We only filter:
       //
-      // NOT paymentDate/paymentStatus.
+      // year = selected year
+      // status = paid
+      //
+      // Therefore all 12 months are included.
       //
       // =================================================
 
       StaffSalary.aggregate([
         {
-          $match: {
-            month: Number(month),
-
-            year: Number(year),
-
-            status: 'paid',
-          },
+          $match: salaryYearFilter,
         },
 
         {
@@ -458,9 +479,13 @@ exports.summary = async (req, res) => {
       );
 
 
+    // =================================================
+    // FULL YEAR SALARY TOTAL
+    // =================================================
+
     const totalSalaryPaid =
       Number(
-        periodSalaryPaid[0]?.total || 0
+        yearlySalaryPaid[0]?.total || 0
       );
 
 
@@ -480,13 +505,13 @@ exports.summary = async (req, res) => {
 
 
     // =================================================
-    // FINAL NET BALANCE
+    // FINAL NET INSTITUTE BALANCE
     // =================================================
     //
     // Collection
     // - University Payment
     // - Other Expenses
-    // - Paid Staff Salary
+    // - FULL YEAR PAID SALARY
     //
     // =================================================
 
@@ -643,7 +668,6 @@ exports.summary = async (req, res) => {
           totalCollection,
 
 
-        // Existing frontend compatibility
         today:
           month &&
           year ===
@@ -672,19 +696,20 @@ exports.summary = async (req, res) => {
 
       financial: {
 
-        // Total student collection
+        // Collection for current dashboard period
         totalCollection,
 
 
-        // Total university payment
+        // University payment for current dashboard period
         totalUniversityPaid,
 
 
-        // Normal business expenses
+        // Other expenses for current dashboard period
         totalExpense,
 
 
-        // Staff salary paid
+        // IMPORTANT:
+        // FULL YEAR PAID SALARY
         totalSalaryPaid,
 
 
@@ -692,11 +717,11 @@ exports.summary = async (req, res) => {
         balanceAfterUniversity,
 
 
-        // Final balance
+        // Final institute balance
         netBalance,
 
 
-        // Total money out
+        // Total outflow
         totalOutflow,
       },
 
@@ -711,8 +736,10 @@ exports.summary = async (req, res) => {
 
       totalExpense,
 
+      // FULL YEAR SALARY
       totalSalaryPaid,
 
+      // FINAL BALANCE
       netBalance,
 
       totalOutflow,
