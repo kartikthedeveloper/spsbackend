@@ -18,6 +18,8 @@ const dashboardRoutes = require('./routes/dashboardRoutes');
 const reportRoutes = require('./routes/reportRoutes');
 const campaignRoutes = require('./routes/campaignRoutes');
 const settingsRoutes = require('./routes/settingsRoutes');
+const contactMessageRoutes = require("./routes/contactMessageRoutes");
+
 
 const app = express();
 
@@ -62,6 +64,8 @@ app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/reports', reportRoutes);
 app.use('/api/campaigns', campaignRoutes);
 app.use('/api/settings', settingsRoutes);
+app.use('/api/contact-messages', contactMessageRoutes);
+
 
 app.use((req, res) => res.status(404).json({ message: 'Route not found' }));
 
