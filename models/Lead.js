@@ -2,8 +2,8 @@ const mongoose = require('mongoose');
 
 const leadSchema = new mongoose.Schema(
   {
-    leadId: { type: String, required: true, unique: true }, // e.g. LD-2026-0001
-    fullName: { type: String, required: true, trim: true },
+    leadId: { type: String, required: true, unique: true },
+    fullName: { type: String, trim: true },
     phone: { type: String, required: true, trim: true },
     altPhone: { type: String, trim: true },
     email: { type: String, trim: true, lowercase: true },
@@ -14,7 +14,7 @@ const leadSchema = new mongoose.Schema(
       default: 'other',
     },
     priority: { type: String, enum: ['hot', 'warm', 'cold'], default: 'warm' },
-
+    customMessage: { type: String, trim: true, default: '' },
     stage: {
       type: String,
       enum: ['new', 'contacted', 'demo_scheduled', 'follow_up', 'converted', 'lost'],
@@ -28,6 +28,7 @@ const leadSchema = new mongoose.Schema(
     assignedTo: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
     leadOwner: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
 
+    // ✅ Notes (existing) — general activity
     notes: [
       {
         text: String,
@@ -35,6 +36,18 @@ const leadSchema = new mongoose.Schema(
         addedAt: { type: Date, default: Date.now },
       },
     ],
+
+    // ✅ NEW: Remarks history (date-wise, multiple entries)
+    remarks: [
+      {
+        text: { type: String, required: true, trim: true },
+        addedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+        addedAt: { type: Date, default: Date.now },
+      },
+    ],
+
+    // ✅ NEW: Expected coming / visit date (kab aane ko bola hai)
+    comingDate: { type: Date, default: null },
 
     followUpAt: { type: Date },
     lastContactedAt: { type: Date },
@@ -46,5 +59,6 @@ const leadSchema = new mongoose.Schema(
 );
 
 leadSchema.index({ fullName: 'text', phone: 'text', leadId: 'text' });
+leadSchema.index({ comingDate: 1, createdAt: -1 });
 
 module.exports = mongoose.model('Lead', leadSchema);
