@@ -5,7 +5,6 @@ const paymentSchema = new mongoose.Schema(
     receiptNumber: {
       type: String,
       required: true,
-      unique: true,
     },
 
     student: {
@@ -59,7 +58,6 @@ const paymentSchema = new mongoose.Schema(
     collectedBy: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User',
-      required: true,
     },
   },
   {
