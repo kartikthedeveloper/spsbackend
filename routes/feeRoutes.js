@@ -102,4 +102,35 @@ router.delete(
   ctrl.deleteUniversityPayment
 );
 
+// =====================================================
+// STUDENT PAYMENTS
+// =====================================================
+
+router.get(
+  '/payments',
+  ctrl.listPayments
+);
+
+router.post(
+  '/payments',
+  authorize(
+    'admin',
+    'branch_manager',
+    'staff'
+  ),
+  ctrl.recordPayment
+);
+
+// DELETE STUDENT PAYMENT
+router.delete(
+  '/payments/:id',
+  authorize('admin'),
+  ctrl.deletePayment
+);
+
+router.get(
+  '/payments/:id/receipt',
+  ctrl.receiptPdf
+);
+
 module.exports = router;
