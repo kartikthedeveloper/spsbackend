@@ -19,6 +19,7 @@ const reportRoutes = require('./routes/reportRoutes');
 const campaignRoutes = require('./routes/campaignRoutes');
 const settingsRoutes = require('./routes/settingsRoutes');
 const contactMessageRoutes = require("./routes/contactMessageRoutes");
+const staffRoutes = require('./routes/staffRoutes');
 
 
 const app = express();
@@ -57,6 +58,7 @@ app.use('/api/branches', branchRoutes);
 app.use('/api/academics', courseRoutes); // /courses and /batches
 app.use('/api/students', studentRoutes);
 app.use('/api/fees', feeRoutes);
+app.use('/api/staff', staffRoutes);
 app.use('/api/attendance', attendanceRoutes);
 app.use('/api/leads', leadRoutes);
 app.use('/api/expenses', expenseRoutes);
@@ -66,7 +68,6 @@ app.use('/api/reports', reportRoutes);
 app.use('/api/campaigns', campaignRoutes);
 app.use('/api/settings', settingsRoutes);
 app.use('/api/contact-messages', contactMessageRoutes);
-
 
 app.use((req, res) => res.status(404).json({ message: 'Route not found' }));
 
