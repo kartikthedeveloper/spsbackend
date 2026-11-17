@@ -214,6 +214,63 @@ exports.recordPayment = async (
   }
 };
 
+
+// =====================================================
+// DELETE STUDENT PAYMENT
+// ADMIN ONLY
+// =====================================================
+
+exports.deletePayment = async (req, res) => {
+  try {
+    // Extra security check
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({
+        success: false,
+        message: 'Only admin can delete payments'
+      });
+    }
+
+    const { id } = req.params;
+
+    // Find payment first
+    const payment = await Payment.findById(id);
+
+    if (!payment) {
+      return res.status(404).json({
+        success: false,
+        message: 'Payment not found'
+      });
+    }
+
+    // Store details for response
+    const deletedPayment = {
+      _id: payment._id,
+      receiptNumber: payment.receiptNumber,
+      student: payment.student,
+      amountPaid: payment.amountPaid,
+      paymentMode: payment.paymentMode
+    };
+
+    // Delete payment record
+    await Payment.findByIdAndDelete(id);
+
+    return res.status(200).json({
+      success: true,
+      message: 'Student payment deleted successfully',
+      deletedPayment
+    });
+
+  } catch (error) {
+    console.error('DELETE PAYMENT ERROR:', error);
+
+    return res.status(500).json({
+      success: false,
+      message: 'Could not delete payment',
+      error: error.message
+    });
+  }
+};
+
 // =====================================================
 // LIST STUDENT PAYMENTS
 // =====================================================
